@@ -10,8 +10,14 @@
 __device__ __host__ int CeilDiv(int a, int b) { return (a-1)/b + 1; }
 __device__ __host__ int CeilAlign(int a, int b) { return CeilDiv(a, b) * b; }
 
+__global__ void build_tree(char *input_gpu,  int fsize, int offset) {
+	int idx = blockIdx.x * blockDim.x + threadIdx.x + offset;
+}
+
 void CountPosition(const char *text, int *pos, int text_size)
 {
+		
+    build_tree_L1<<<160, 512>>>(text, fsize, offset*i/64);
 }
 
 int ExtractHead(const int *pos, int *head, int text_size)
