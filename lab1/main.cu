@@ -87,7 +87,7 @@ int main(int argc, char **argv)
 	// Part I
 	timer_count_position.Start();
 	int *pos_yours_gpu = pos_yours_sync.get_gpu_wo();
-	CountPosition(text_sync.get_gpu_ro(), pos_yours_gpu, n);
+  CountPosition(text_sync.get_gpu_ro(), pos_yours_gpu, n);
 	timer_count_position.Pause();
 	CHECK;
 	printf_timer(timer_count_position);
