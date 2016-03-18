@@ -29,13 +29,26 @@ __global__ void build_tree(thrust::device_ptr<int> seg_tree ,int num,int nodes, 
     seg_tree[start+idx] = 0;
 }
 
-__global__ void count_p(int *pos, thrust::device_ptr<int> seg_tree ,int num,int nodes, int start, int last_start) {
+__global__ void count_p(int *pos, thrust::device_ptr<int> seg_tree, int text_size ,int tree_size) {
 	int idx = blockIdx.x * blockDim.x + threadIdx.x;
+  int top_zero_layer = 0;
+  int layer_pos = idx;
+  int lower_layer_nodes = text_size;
   //use share maybe TODO
-  if (idx < nodes and seg_tree[last_start+2*idx] != 0 and seg_tree[last_start+2*idx+1] != 0) 
-		seg_tree[start+idx] = num;
-  else
-    seg_tree[start+idx] = 0;
+  if (idx == 0) 
+		pos[idx] = seg_tree[start+idx];
+  
+  if (idx > 0 and seg_tree[idx-1] == 0)
+    pos[idx] = 1;
+
+  for (int i = 1; i<=8; i++){
+    layer_pos = layer_pos/2;
+    if(seg_tree[lower_layer_nodes+layer_pos-1] == 0){
+      top_zero_layer = i;
+      break;
+    }
+    lower_layer_nodes += text_size/2;//TODO
+  }
 }
 
 void CountPosition(const char *text, int *pos, int text_size)
@@ -44,6 +57,7 @@ void CountPosition(const char *text, int *pos, int text_size)
     //int* temp_h = nullptr;
     int last_start_position = 0;
     int start_position = text_size;
+    int tree_size = 0;
     
     thrust::device_ptr<int> seg_tree = thrust::device_malloc<int>(text_size*2);
     init_tree<<<(text_size/512+1), 512>>>(text, seg_tree, text_size);
@@ -52,7 +66,7 @@ void CountPosition(const char *text, int *pos, int text_size)
       last_start_position = start_position;
       start_position += (text_size/pow(2,i));
     }
-    init_tree<<<(text_size/512+1), 512>>>(seg_tree, pos,text_size);
+    tree_size = start_position;
     //thrust::fill(seg_tree.begin(),seg_tree.begin()+text_size, (int)0 );
     //temp_d = thrust::raw_pointer_cast(seg_tree);
     thrust::device_vector<int> temp_d(seg_tree+text_size,seg_tree+text_size+text_size/2+text_size/4+text_size/8);  
