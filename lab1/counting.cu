@@ -29,66 +29,107 @@ __global__ void build_tree(thrust::device_ptr<int> seg_tree ,int num,int nodes, 
     seg_tree[start+idx] = 0;
 }
 
-__global__ void count_p(int *pos, thrust::device_ptr<int> seg_tree, int text_size ,int tree_size) {
+__global__ void count_p(int *pos, thrust::device_ptr<int> seg_tree, int expand_text_size ,int tree_size ,int text_size) {
 	int idx = blockIdx.x * blockDim.x + threadIdx.x;
-  int top_zero_layer = 0;
-  int layer_pos = idx;
-  int lower_layer_nodes = text_size;
+  int previous_node = idx;
+  int up_search = 0;
+  int pow_2_i = 1;
+  int inv_count;
+  int final_node = 0;
   //use share maybe TODO
-  if (idx == 0) 
-		pos[idx] = seg_tree[start+idx];
   
-  if (idx > 0 and seg_tree[idx-1] == 0)
-    pos[idx] = 1;
-
-  for (int i = 1; i<=8; i++){
-    layer_pos = layer_pos/2;
-    if(seg_tree[lower_layer_nodes+layer_pos-1] == 0){
-      top_zero_layer = i;
-      break;
+  if(idx == 0){
+    pos[0] = seg_tree[0];
+  }
+  else{
+    //climb up seg_tree
+    for (int i = 0; i<10; i++){
+      if(idx/pow_2_i == 0){
+        previous_node = 1;
+        break;
+      }
+      if(seg_tree[up_search+idx/pow_2_i-1] == 0){
+        break;
+      }
+      else{
+        previous_node = up_search+idx/pow_2_i-1;
+        up_search += expand_text_size/pow_2_i;
+        pow_2_i *= 2;
+      }
     }
-    lower_layer_nodes += text_size/2;//TODO
+    
+    inv_count = tree_size - (previous_node-1);
+    //go down seg_tree
+    for (int i = 0; i<10; i++){
+      if((tree_size-inv_count) < expand_text_size){
+        if(seg_tree[tree_size-inv_count] == 0)
+          final_node = tree_size-inv_count+1;
+        else
+          final_node = tree_size-inv_count;
+        break;
+      }
+      else{
+        if(seg_tree[tree_size-inv_count] == 0)
+          inv_count = inv_count*2+1;
+        else
+          inv_count = (inv_count+1)*2+1;
+      }
+    }
+    
+    if(idx < text_size){
+      if(seg_tree[idx] == 0)
+        pos[idx] = 0;
+      else
+        pos[idx] = final_node;
+    }
+    
   }
 }
 
 void CountPosition(const char *text, int *pos, int text_size)
 {
-		//int* temp_d;
-    //int* temp_h = nullptr;
-    int last_start_position = 0;
-    int start_position = text_size;
+		int last_start_position = 0;
     int tree_size = 0;
+    int expand_text_size = (text_size/512+1)*512;
+    int start_position = expand_text_size;
     
-    thrust::device_ptr<int> seg_tree = thrust::device_malloc<int>(text_size*2);
-    init_tree<<<(text_size/512+1), 512>>>(text, seg_tree, text_size);
-    for(int i = 1; i <=8; i++ ){
-      build_tree<<<text_size/(512*pow(2,i))+1, 512>>>(seg_tree, pow(2,i),text_size/pow(2,i),start_position,last_start_position);
+    thrust::device_ptr<int> seg_tree = thrust::device_malloc<int>(expand_text_size*2-expand_text_size/512);
+    init_tree<<<(text_size/512+1), 512>>>(text, seg_tree, expand_text_size);
+    for(int i = 1; i <=9; i++ ){
+      build_tree<<<text_size/(512*pow(2,i))+1, 512>>>(seg_tree, pow(2,i),expand_text_size/pow(2,i),start_position,last_start_position);
       last_start_position = start_position;
-      start_position += (text_size/pow(2,i));
+      start_position += (expand_text_size/pow(2,i));
     }
-    tree_size = start_position;
+    tree_size = expand_text_size*2-expand_text_size/512;
     //thrust::fill(seg_tree.begin(),seg_tree.begin()+text_size, (int)0 );
-    //temp_d = thrust::raw_pointer_cast(seg_tree);
+    /* //check tree
     thrust::device_vector<int> temp_d(seg_tree+text_size,seg_tree+text_size+text_size/2+text_size/4+text_size/8);  
-    //cudaMemcpy(h_a, d_a, sizeof(StructA), cudaMemcpyDeviceToHost);
-    //cudaMemcpy(temp_h, temp_d, sizeof(int)*text_size, cudaMemcpyDeviceToHost);
     printf("check point\n");
     for(int i=0; i< 100; i++){
       std::cout << temp_d[i];
     }
     std::cout << std::endl;
-    for(int i=text_size/2; i< 100+text_size/2; i++){
+    for(int i=expand_text_size/2; i< 100+expand_text_size/2; i++){
       std::cout << temp_d[i];
     }
     std::cout << std::endl;
-    for(int i=text_size/2+text_size/4; i< 100+text_size/2+text_size/4; i++){
+    for(int i=expand_text_size/2+expand_text_size/4; i< 100+expand_text_size/2+expand_text_size/4; i++){
       std::cout << temp_d[i];
     }
     std::cout << std::endl;
-    for(int i=text_size/2+text_size/4+text_size/8; i< 100+text_size/2+text_size/4+text_size/8; i++){
+    for(int i=expand_text_size/2+expand_text_size/4+expand_text_size/8; i< 100+expand_text_size/2+expand_text_size/4+expand_text_size/8; i++){
       std::cout << temp_d[i];
     }
-    //build_tree_layer<<<(text_size/512+1), 512>>>(text, fsize, offset*i/64);
+    */
+    
+    count_p<<<expand_text_size/512, 512>>>( pos, seg_tree, expand_text_size ,tree_size ,text_size);
+     //check tree
+    thrust::device_vector<int> temp_d(pos,pos+text_size);  
+    printf("check point\n");
+    for(int i=0; i< 1000; i++){
+      std::cout << temp_d[i] << " ";
+    }
+    temp_d.clear();
 }
 
 int ExtractHead(const int *pos, int *head, int text_size)
