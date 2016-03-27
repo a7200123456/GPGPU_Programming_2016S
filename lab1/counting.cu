@@ -9,6 +9,17 @@
 #include <thrust/device_vector.h> // add 
 #include <thrust/execution_policy.h>
 
+struct head_functor
+{
+  __host__ __device__
+  int operator()(const int& x, const int& y) const { 
+        if(x == 1)
+            return y;
+        else
+            return -1; 
+    }
+};
+
 __device__ __host__ int CeilDiv(int a, int b) { return (a-1)/b + 1; }
 __device__ __host__ int CeilAlign(int a, int b) { return CeilDiv(a, b) * b; }
 
@@ -151,15 +162,28 @@ void CountPosition(const char *text, int *pos, int text_size)
 
 int ExtractHead(const int *pos, int *head, int text_size)
 {
-	int *buffer;
+	//int *buffer;
 	int nhead;
-	cudaMalloc(&buffer, sizeof(int)*text_size*2); // this is enough
+	//cudaMalloc(&buffer, sizeof(int)*text_size*2); // this is enough
 	thrust::device_ptr<const int> pos_d(pos);
-	thrust::device_ptr<int> head_d(head), flag_d(buffer), cumsum_d(buffer+text_size);
-
+	thrust::device_ptr<int> head_d(head);//, flag_d(buffer), cumsum_d(buffer+text_size);
+    thrust::device_vector<int> flag(text_size);
+    thrust::device_vector<int> head_temp(text_size);
 	// TODO
+    thrust::sequence(flag.begin(), flag.end());
+    //thrust::copy(pos_d.begin(), pos_d.end(), head_d.begin());
+    nhead = thrust::count(pos_d, pos_d+text_size, 1);
+    thrust::transform(pos_d, pos_d+text_size,flag.begin(), head_temp.begin() , head_functor());
+    //head_d = thrust::remove(head_temp.begin(), head_temp.end(), 0);
 
-	cudaFree(buffer);
+    thrust::remove_copy(head_temp.begin(), head_temp.end(), head_d, -1);
+    /*std::cout << "nhead: " << nhead<< std::endl;
+    thrust::device_vector<int> temp_d(head_d,head_d+text_size);//head_temp.begin(), head_temp.end());
+    for(int i=0; i< 1000; i++){
+      std::cout << temp_d[i] << " ";
+    }
+    */
+	//cudaFree(buffer);
 	return nhead;
 }
 
