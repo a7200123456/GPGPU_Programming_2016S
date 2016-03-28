@@ -20,6 +20,17 @@ struct head_functor
     }
 };
 
+struct head_3_functor
+{
+  __host__ __device__
+  int operator()(const int& x, const int& y) const { 
+        if((x == 1) || (x == 2) || (x == 3))
+            return y;
+        else
+            return -1; 
+    }
+};
+
 __device__ __host__ int CeilDiv(int a, int b) { return (a-1)/b + 1; }
 __device__ __host__ int CeilAlign(int a, int b) { return CeilDiv(a, b) * b; }
 
@@ -113,6 +124,17 @@ __global__ void count_p(int *pos, thrust::device_ptr<bool> seg_tree, int expand_
   }
 }
 
+__global__ void count_word(thrust::device_ptr<const int> pos_d ,thrust::device_ptr<int> word_d,int text_size) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+  //use share maybe TODO
+  if (idx == text_size)
+    word_d[idx] = pos_d[idx];
+  else if (pos_d[idx] != 0 and pos_d[idx+1] == 0) 
+    word_d[idx] = pos_d[idx];
+  else
+    word_d[idx] = 0;
+}
+
 void CountPosition(const char *text, int *pos, int text_size)
 {
 		int last_start_position = 0;
@@ -128,7 +150,7 @@ void CountPosition(const char *text, int *pos, int text_size)
       start_position += (expand_text_size/pow(2,i));
     }
     tree_size = expand_text_size*2-expand_text_size/512;
-    //std::cout << "expand_text_size: " <<expand_text_size <<"tree_size:" << tree_size<< std::endl;
+    std::cout << "expand_text_size: " <<expand_text_size <<"tree_size:" << tree_size<< std::endl;
     //thrust::fill(seg_tree.begin(),seg_tree.begin()+text_size, (int)0 );
     /* //check tree
     thrust::device_vector<int> temp_d(seg_tree+text_size,seg_tree+text_size+text_size/2+text_size/4+text_size/8);  
@@ -189,4 +211,19 @@ int ExtractHead(const int *pos, int *head, int text_size)
 
 void Part3(char *text, int *pos, int *head, int text_size, int n_head)
 {
+	thrust::device_ptr<const int> pos_d(pos);
+	//thrust::device_ptr<int> text_d(text);//, flag_d(buffer), cumsum_d(buffer+text_size);
+    thrust::device_ptr<int> word_d = thrust::device_malloc<int>(text_size);
+    thrust::device_vector<int> word_length(text_size);
+	// TODO
+    //thrust::sequence(flag.begin(), flag.end());
+    //thrust::copy(pos_d.begin(), pos_d.end(), head_d.begin());
+    //nhead = thrust::count(pos_d, pos_d+text_size, 1);
+    //thrust::transform(pos_d, pos_d+text_size,text_d.begin(), head_temp.begin() , head_3_functor());
+    //head_d = thrust::remove(head_temp.begin(), head_temp.end(), 0);
+    count_word<<<text_size/512+1, 512>>>(pos_d, word_d,text_size);
+    thrust::remove_copy(word_d, word_d+text_size, word_length.begin(), 0);
+    for(int i=0; i< 100; i++){
+      std::cout << word_length[i] << " ";
+    }
 }
