@@ -18,4 +18,6 @@ public:
 	void Generate(uint8_t *yuv);
   
 	static float h_dens[640*480];
+	static float h_vel_x[640*480];
+	static float h_vel_y[640*480];
 };
