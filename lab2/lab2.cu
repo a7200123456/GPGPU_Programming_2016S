@@ -1,7 +1,7 @@
 #include "lab2.h"
 #define TIMESTEP 0.04
-#define DIFF 0.0001
-#define VISC 0.000015
+#define DIFF 0.0005
+#define VISC 0.0001
 static const unsigned NFRAME = 240;
 static const unsigned W = 640;
 static const unsigned H = 480;
@@ -43,10 +43,10 @@ void Lab2VideoGenerator::get_info(Lab2VideoInfo &info) {
 __global__ void init_vel(float* d_vel_x ,float* d_vel_y, float* d_vel_x_old,float* d_vel_y_old,int t) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     int idy = blockIdx.y * blockDim.y + threadIdx.y;
-  if (idx>=(W/2-300) && idx<(W/2+300) && idy>=(H/2-200) && idy<(H/2+200)){
-    if(t==0){
+  if (idx>=(W/2-50) && idx<(W/2+50)){// && idy>=(H/2-200) && idy<(H/2+200)){
+    if(t<100){
       d_vel_x[idy*W+idx] = 0;
-      d_vel_y[idy*W+idx] = -128;
+      d_vel_y[idy*W+idx] = 20;
     }
     else{
       d_vel_x[idy*W+idx] = d_vel_x_old[idy*W+idx];    
@@ -63,8 +63,8 @@ __global__ void init_vel(float* d_vel_x ,float* d_vel_y, float* d_vel_x_old,floa
       d_vel_y[idy*W+idx] = d_vel_y_old[idy*W+idx];      
     }
   }
-  if(t==150 && idx>=(200-10) && idx<(200+10)){
-     d_vel_y_old[idy*W+idx] -= 24;
+  if(t==150 && idx>=(W/2-10) && idx<(W/2+10)){
+     d_vel_y_old[idy*W+idx] -= 128;
   }
 }
 
@@ -86,6 +86,7 @@ __global__ void diff_vel(float* d_vel_x ,float* d_vel_y, float* d_vel_x_old,floa
       }
     }
 }
+
 __global__ void proj_vel_grad(float* d_vel_x ,float* d_vel_y, float* d_vel_x_old,float* d_vel_y_old,float* d_grad,float* d_p) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     int idy = blockIdx.y * blockDim.y + threadIdx.y;
@@ -111,7 +112,6 @@ __global__ void proj_vel_solve(float* d_grad,float* d_p) {
       }
     }
 }
-
 __global__ void proj_vel_addon(float* d_vel_x,float* d_vel_y,float* d_p) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     int idy = blockIdx.y * blockDim.y + threadIdx.y;
@@ -124,6 +124,7 @@ __global__ void proj_vel_addon(float* d_vel_x,float* d_vel_y,float* d_p) {
       d_vel_y[idy*W+idx] -= 0.5*(d_p[(idy+1)*W+idx] - d_p[(idy-1)*W+idx]) / h_y;
     }
 }
+
 void proj_vel(float* d_vel_x ,float* d_vel_y, float* d_vel_x_old,float* d_vel_y_old) {
     
     float *d_grad, *d_p;
@@ -141,26 +142,52 @@ void proj_vel(float* d_vel_x ,float* d_vel_y, float* d_vel_x_old,float* d_vel_y_
     cudaFree(d_p ); 
 }
 
-
-__global__ void init_dens(float* d_dens , float* d_dens_old,int t) {
+__global__ void advec_vel(float* d_vel_x,float* d_vel_y , float* d_vel_x_old,float* d_vel_y_old, float dt) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     int idy = blockIdx.y * blockDim.y + threadIdx.y;
+   
+    float pre_x = idx - dt*W*d_vel_x_old[idy*W+idx];
+    float pre_y = idy - dt*H*d_vel_y_old[idy*W+idx];
+    
+    if (pre_x<0.5) pre_x = 0.5; 
+    if (pre_x>(W-1-0.5)) pre_x = (W-1-0.5);
+    if (pre_y<0.5) pre_y = 0.5; 
+    if (pre_y>(H-1-0.5)) pre_y = (H-1-0.5);
+
+    int left = (int)pre_x;
+    int top = (int)pre_y;
+    
+    d_vel_x[idy*W+idx] = (pre_x-left)*(pre_y-top)*d_vel_x_old[(top+1)*W+left+1]+
+                        (left+1-pre_x)*(pre_y-top)*d_vel_x_old[(top+1)*W+left]+
+                        (pre_x-left)*(top+1-pre_y)*d_vel_x_old[(top)*W+left+1]+
+                        (left+1-pre_x)*(top+1-pre_y)*d_vel_x_old[(top)*W+left];
+
+    d_vel_y[idy*W+idx] = (pre_x-left)*(pre_y-top)*d_vel_y_old[(top+1)*W+left+1]+
+                        (left+1-pre_x)*(pre_y-top)*d_vel_y_old[(top+1)*W+left]+
+                        (pre_x-left)*(top+1-pre_y)*d_vel_y_old[(top)*W+left+1]+
+                        (left+1-pre_x)*(top+1-pre_y)*d_vel_y_old[(top)*W+left];
+}
+
+__global__ void init_dens(float* d_dens , float* d_dens_old,int t) {
+  int idx = blockIdx.x * blockDim.x + threadIdx.x;
+  int idy = blockIdx.y * blockDim.y + threadIdx.y;
   if(t==0){
-    if (idx>=(100-20) && idx<(100+20) && idy>=(400-20) && idy<(400+20)){
-      d_dens[idy*W+idx] = 64;
+    //if (idx>=(100-20) && idx<(100+20) && idy>=(400-20) && idy<(400+20)){
+    if (idx>=(W/2-20) && idx<(W/2+20) && idy>=(H/2-20) && idy<(H/2+20)){
+      d_dens[idy*W+idx] = 200;
     }
     else{
       d_dens[idy*W+idx] = 0;
     }
   }
-  else if(t<200){
+  /*else if(t<200){
     if (idx>=(100-20+2*t) && idx<(100+20+2*t) && idy>=(400-20-0.5*t) && idy<(400+20-0.5*t)){
-      d_dens[idy*W+idx] = 64;
+      d_dens[idy*W+idx] = 200;
     }
     else{
       d_dens[idy*W+idx] = d_dens_old[idy*W+idx]; 
     }
-  }
+  }*/
   else{
     //if (idx>=(W/2-20) && idx<(W/2+20) && idy>=(H/2-20) && idy<(H/2+20)){
     d_dens[idy*W+idx] = d_dens_old[idy*W+idx];    
@@ -170,7 +197,7 @@ __global__ void init_dens(float* d_dens , float* d_dens_old,int t) {
 __global__ void add_source(float* d_dens,float* d_dens_old ,float dt) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     int idy = blockIdx.y * blockDim.y + threadIdx.y;
-      d_dens[idy*W+idx] += (0.5*d_dens_old[idy*W+idx]*dt) ;
+      d_dens[idy*W+idx] += (d_dens_old[idy*W+idx]*dt) ;
 }
 
 __global__ void diff_dens(float* d_dens,float* d_dens_old , float diff, float dt) {
@@ -237,14 +264,18 @@ void Lab2VideoGenerator::Generate(uint8_t *yuv) {
   dim3 threads(16, 16);
   
   //velocity step
-  //if(impl->t > 100){
+  if(impl->t > 100){
     init_vel<<<blocks, threads>>>(d_vel_x,d_vel_y, d_vel_x_old,d_vel_y_old, impl->t);
     add_force<<<blocks, threads>>>(d_vel_x,d_vel_y, d_vel_x_old,d_vel_y_old,TIMESTEP);
     SWAP(d_vel_x, d_vel_x_old);
     SWAP(d_vel_y, d_vel_y_old);
-    diff_vel<<<blocks, threads>>>(d_vel_x,d_vel_y, d_vel_x_old,d_vel_y_old,DIFF,TIMESTEP);
+    diff_vel<<<blocks, threads>>>(d_vel_x,d_vel_y, d_vel_x_old,d_vel_y_old,VISC,TIMESTEP);
     proj_vel(d_vel_x,d_vel_y, d_vel_x_old,d_vel_y_old);
-  //}
+    SWAP(d_vel_x, d_vel_x_old);
+    SWAP(d_vel_y, d_vel_y_old);
+    advec_dens<<<blocks, threads>>>(d_vel_x,d_vel_y,d_vel_x_old,d_vel_y_old,TIMESTEP);
+    proj_vel(d_vel_x,d_vel_y, d_vel_x_old,d_vel_y_old);
+  }
   //density  step
   init_dens<<<blocks, threads>>>(d_dens, d_dens_old, impl->t);
   add_source<<<blocks, threads>>>(d_dens,d_dens_old,TIMESTEP);
@@ -258,8 +289,8 @@ void Lab2VideoGenerator::Generate(uint8_t *yuv) {
   output_yuv<<<W*H/512, 512>>>(yuv, d_dens,impl->t);
   
   cudaMemcpy(h_dens, d_dens, W*H*sizeof(float),cudaMemcpyDeviceToHost); 
-  cudaMemcpy(h_vel_x, d_vel_x_old, W*H*sizeof(float),cudaMemcpyHostToDevice); 
-  cudaMemcpy(h_vel_y, d_vel_y_old, W*H*sizeof(float),cudaMemcpyHostToDevice); 
+  cudaMemcpy(h_vel_x, d_vel_x_old, W*H*sizeof(float),cudaMemcpyDeviceToHost); 
+  cudaMemcpy(h_vel_y, d_vel_y_old, W*H*sizeof(float),cudaMemcpyDeviceToHost); 
   
   //cudaMemset(yuv, (impl->t)*255/NFRAME, W*H);
 	cudaMemset(yuv+W*H, 128, W*H/2);
