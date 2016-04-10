@@ -1,7 +1,7 @@
 #include "lab2.h"
 #define TIMESTEP 0.04
-#define DIFF 0.0005
-#define VISC 0.0001
+#define DIFF 0.0001
+#define VISC 0.00025
 static const unsigned NFRAME = 240;
 static const unsigned W = 640;
 static const unsigned H = 480;
@@ -43,16 +43,16 @@ void Lab2VideoGenerator::get_info(Lab2VideoInfo &info) {
 __global__ void init_vel(float* d_vel_x ,float* d_vel_y, float* d_vel_x_old,float* d_vel_y_old,int t) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     int idy = blockIdx.y * blockDim.y + threadIdx.y;
-  if (idx>=(W/2-50) && idx<(W/2+50)){// && idy>=(H/2-200) && idy<(H/2+200)){
-    if(t<100){
-      d_vel_x[idy*W+idx] = 0;
-      d_vel_y[idy*W+idx] = 20;
+  //if (idy>=(H/2-30) && idy<(H/2+30)){// && idy>=(H/2-200) && idy<(H/2+200)){
+    if(t==0){
+      d_vel_x[idy*W+idx] = -0.1;
+      d_vel_y[idy*W+idx] = 0;
     }
     else{
       d_vel_x[idy*W+idx] = d_vel_x_old[idy*W+idx];    
       d_vel_y[idy*W+idx] = d_vel_y_old[idy*W+idx];    
     }
-  }
+  /*}
   else{
     if(t==0){
       d_vel_x[idy*W+idx] = 0;
@@ -62,9 +62,12 @@ __global__ void init_vel(float* d_vel_x ,float* d_vel_y, float* d_vel_x_old,floa
       d_vel_x[idy*W+idx] = d_vel_x_old[idy*W+idx];  
       d_vel_y[idy*W+idx] = d_vel_y_old[idy*W+idx];      
     }
+  }*/
+  if(t==100){ //&& idy>=(H/2-10) && idy<(H/2+10)){
+     d_vel_y_old[idy*W+idx] -= 0.1;
   }
-  if(t==150 && idx>=(W/2-10) && idx<(W/2+10)){
-     d_vel_y_old[idy*W+idx] -= 128;
+  if(t==130){ //&& idy>=(H/2-10) && idy<(H/2+10)){
+     d_vel_y_old[idy*W+idx] += 0.3;
   }
 }
 
@@ -92,10 +95,9 @@ __global__ void proj_vel_grad(float* d_vel_x ,float* d_vel_y, float* d_vel_x_old
     int idy = blockIdx.y * blockDim.y + threadIdx.y;
     
     float h_x = 1.0/W;
-    float h_y = 1.0/H;
     
     if (idx>=1 && idx<(W-1) && idy>=1 && idy<(H-1)){
-      d_grad[idy*W+idx] = -0.5*h_x*(d_vel_x[idy*W+idx+1]-d_vel_x[idy*W+idx-1]+d_vel_y[(idy+1)*W+idx]+d_vel_y[(idy-1)*W+idx]);  
+      d_grad[idy*W+idx] = -0.5*h_x*(d_vel_x[idy*W+idx+1]-d_vel_x[idy*W+idx-1]+d_vel_y[(idy+1)*W+idx]-d_vel_y[(idy-1)*W+idx]);  
       d_p[idy*W+idx] = 0;
     }
 }
@@ -103,8 +105,6 @@ __global__ void proj_vel_solve(float* d_grad,float* d_p) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     int idy = blockIdx.y * blockDim.y + threadIdx.y;
     
-    float h_x = 1.0/W;
-    float h_y = 1.0/H;
     
     if (idx>=1 && idx<(W-1) && idy>=1 && idy<(H-1)){
       for(int k=0; k < 20; k++){
@@ -173,8 +173,8 @@ __global__ void init_dens(float* d_dens , float* d_dens_old,int t) {
   int idy = blockIdx.y * blockDim.y + threadIdx.y;
   if(t==0){
     //if (idx>=(100-20) && idx<(100+20) && idy>=(400-20) && idy<(400+20)){
-    if (idx>=(W/2-20) && idx<(W/2+20) && idy>=(H/2-20) && idy<(H/2+20)){
-      d_dens[idy*W+idx] = 200;
+    if (idx>=(W/2-10) && idx<(W/2+10) && idy>=(H/2-50) && idy<(H/2+50)){
+      d_dens[idy*W+idx] = 300;
     }
     else{
       d_dens[idy*W+idx] = 0;
@@ -197,7 +197,7 @@ __global__ void init_dens(float* d_dens , float* d_dens_old,int t) {
 __global__ void add_source(float* d_dens,float* d_dens_old ,float dt) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     int idy = blockIdx.y * blockDim.y + threadIdx.y;
-      d_dens[idy*W+idx] += (d_dens_old[idy*W+idx]*dt) ;
+      d_dens[idy*W+idx] += (0.5*d_dens_old[idy*W+idx]*dt) ;
 }
 
 __global__ void diff_dens(float* d_dens,float* d_dens_old , float diff, float dt) {
@@ -264,7 +264,7 @@ void Lab2VideoGenerator::Generate(uint8_t *yuv) {
   dim3 threads(16, 16);
   
   //velocity step
-  if(impl->t > 100){
+  //if(impl->t > 100){
     init_vel<<<blocks, threads>>>(d_vel_x,d_vel_y, d_vel_x_old,d_vel_y_old, impl->t);
     add_force<<<blocks, threads>>>(d_vel_x,d_vel_y, d_vel_x_old,d_vel_y_old,TIMESTEP);
     SWAP(d_vel_x, d_vel_x_old);
@@ -275,16 +275,16 @@ void Lab2VideoGenerator::Generate(uint8_t *yuv) {
     SWAP(d_vel_y, d_vel_y_old);
     advec_dens<<<blocks, threads>>>(d_vel_x,d_vel_y,d_vel_x_old,d_vel_y_old,TIMESTEP);
     proj_vel(d_vel_x,d_vel_y, d_vel_x_old,d_vel_y_old);
-  }
+  //}
   //density  step
   init_dens<<<blocks, threads>>>(d_dens, d_dens_old, impl->t);
   add_source<<<blocks, threads>>>(d_dens,d_dens_old,TIMESTEP);
   SWAP(d_dens, d_dens_old);
   diff_dens<<<blocks, threads>>>(d_dens,d_dens_old,DIFF,TIMESTEP);
-  if(impl->t > 100){
+  //if(impl->t > 100){
     SWAP(d_dens, d_dens_old);
     advec_dens<<<blocks, threads>>>(d_dens,d_dens_old,d_vel_x,d_vel_y,TIMESTEP);
-  }
+  //}
   //output
   output_yuv<<<W*H/512, 512>>>(yuv, d_dens,impl->t);
   
