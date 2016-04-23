@@ -23,6 +23,7 @@ __global__ void SimpleClone(
 			output[curb*3+0] = target[curt*3+0];
 			output[curb*3+1] = target[curt*3+1];
 			output[curb*3+2] = target[curt*3+2];
+            // let see github work
 		}
 	}
 }
