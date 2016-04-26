@@ -141,12 +141,22 @@ void PoissonImageCloning(
     float *halfmsk;
     float *temp_halfimg;
     float *temp_halfoutput;
+    float *quadoutput;
+    float *quadtar;
+    float *quadmsk;
+    float *temp_quadimg;
+    float *temp_quadoutput;
     cudaMalloc((void**)&temp_output, wb*hb*sizeof(float)*3);  
     cudaMalloc((void**)&halfoutput, wb/2*hb/2*sizeof(float)*3);  
     cudaMalloc((void**)&halftar, wt/2*ht/2*sizeof(float)*3);  
     cudaMalloc((void**)&halfmsk, wt/2*ht/2*sizeof(float)*3);  
     cudaMalloc((void**)&temp_halfimg, wb/2*hb/2*sizeof(float)*3); 
     cudaMalloc((void**)&temp_halfoutput, wb/2*hb/2*sizeof(float)*3);  
+    cudaMalloc((void**)&quadoutput, wb/4*hb/4*sizeof(float)*3);  
+    cudaMalloc((void**)&quadtar, wt/4*ht/4*sizeof(float)*3);  
+    cudaMalloc((void**)&quadmsk, wt/4*ht/4*sizeof(float)*3);  
+    cudaMalloc((void**)&temp_quadimg, wb/4*hb/4*sizeof(float)*3); 
+    cudaMalloc((void**)&temp_quadoutput, wb/4*hb/4*sizeof(float)*3);  
 
     cudaMemcpy(output, background, wb*hb*sizeof(float)*3, cudaMemcpyDeviceToDevice);
 	SimpleClone<<<dim3(CeilDiv(wt,32), CeilDiv(ht,16)), dim3(32,16)>>>(
@@ -158,8 +168,29 @@ void PoissonImageCloning(
     Downscale<<<dim3(CeilDiv(wt/2,32), CeilDiv(ht/2,16)), dim3(32,16)>>>(target, halftar,wt/2, ht/2);
     Downscale<<<dim3(CeilDiv(wt/2,32), CeilDiv(ht/2,16)), dim3(32,16)>>>(mask  , halfmsk,wt/2, ht/2);
 
+    Downscale<<<dim3(CeilDiv(wb/4,32), CeilDiv(hb/4,16)), dim3(32,16)>>>(halfoutput, quadoutput,wb/4, hb/4);
+    Downscale<<<dim3(CeilDiv(wt/4,32), CeilDiv(ht/4,16)), dim3(32,16)>>>(halftar, quadtar,wt/4, ht/4);
+    Downscale<<<dim3(CeilDiv(wt/4,32), CeilDiv(ht/4,16)), dim3(32,16)>>>(halfmsk  , quadmsk,wt/4, ht/4);
+
+    cudaMemcpy(temp_quadoutput,quadoutput, wb/4*hb/4*sizeof(float)*3, cudaMemcpyDeviceToDevice);
+    for(int i=0;i<2700;i++){
+        JacobiIteration<<<dim3(CeilDiv(wt/4,32), CeilDiv(ht/4,16)), dim3(32,16)>>>(
+            temp_quadoutput, quadtar, quadmsk, quadoutput,
+            wb/4, hb/4, wt/4, ht/4, oy/4, ox/4
+        );
+        cudaMemcpy(temp_quadoutput,quadoutput, wb/4*hb/4*sizeof(float)*3, cudaMemcpyDeviceToDevice);
+    }
+
+    Upscale<<<dim3(CeilDiv(wb/4,32), CeilDiv(hb/4,16)), dim3(32,16)>>>(
+        quadoutput, temp_halfoutput,wb/4, hb/4
+    );
+    UpscaleClone<<<dim3(CeilDiv(wt/2,32), CeilDiv(ht/2,16)), dim3(32,16)>>>(
+        temp_halfoutput, halfmsk, halfoutput,
+        wb/2, hb/2, wt/2, ht/2, oy/2, ox/2
+    );
+
     cudaMemcpy(temp_halfoutput,halfoutput, wb/2*hb/2*sizeof(float)*3, cudaMemcpyDeviceToDevice);
-    for(int i=0;i<6000;i++){
+    for(int i=0;i<5400;i++){
         JacobiIteration<<<dim3(CeilDiv(wt/2,32), CeilDiv(ht/2,16)), dim3(32,16)>>>(
             temp_halfoutput, halftar, halfmsk, halfoutput,
             wb/2, hb/2, wt/2, ht/2, oy/2, ox/2
@@ -176,7 +207,7 @@ void PoissonImageCloning(
     );
 
     cudaMemcpy(temp_output,output, wb*hb*sizeof(float)*3, cudaMemcpyDeviceToDevice); 
-    for(int i=0;i<12000;i++){
+    for(int i=0;i<10800;i++){
         JacobiIteration<<<dim3(CeilDiv(wt,32), CeilDiv(ht,16)), dim3(32,16)>>>(
             temp_output, target, mask, output,
             wb, hb, wt, ht, oy, ox
@@ -191,4 +222,9 @@ void PoissonImageCloning(
     cudaFree(halfmsk ); 
     cudaFree(temp_halfimg ); 
     cudaFree(temp_halfoutput ); 
+    cudaFree(quadoutput ); 
+    cudaFree(quadtar ); 
+    cudaFree(quadmsk ); 
+    cudaFree(temp_quadimg ); 
+    cudaFree(temp_quadoutput ); 
 }

@@ -121,7 +121,7 @@ void PoissonImageCloning(
 	);
     cudaMemcpy(temp_output,output, wb*hb*sizeof(float)*3, cudaMemcpyDeviceToDevice);
     
-    for(int i=0;i<7000;i++){
+    for(int i=0;i<20000;i++){
         JacobiIteration<<<dim3(CeilDiv(wt,32), CeilDiv(ht,16)), dim3(32,16)>>>(
             temp_output, target, mask, output,
             wb, hb, wt, ht, oy, ox
